@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "EduInsight AI",
+    "slug": "eduinsight-ai-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0F1117"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true },
+    "android": {
+      "adaptiveIcon": { "backgroundColor": "#0F1117" }
+    },
+    "web": { "bundler": "metro" }
+  }
+}
