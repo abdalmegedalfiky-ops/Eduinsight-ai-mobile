@@ -25,6 +25,7 @@ export interface ClassRow {
   name: string;
   subject: string;
   teacherName: string;
+  teacherId: string | null; // null = seeded demo class, not owned by a real account
   grade: string;
   inviteCode: string;
 }
@@ -50,24 +51,39 @@ export interface Announcement {
 const KEYS = {
   users: "eduinsight:users",
   session: "eduinsight:session",
-  enrollments: "eduinsight:enrollments", // classId[] per userId
+  enrollments: "eduinsight:enrollments", // { [userId]: classId[] }
+  classes: "eduinsight:classes",
+  assignments: "eduinsight:assignments",
+  announcements: "eduinsight:announcements",
+  seeded: "eduinsight:seeded:v1",
 };
 
 const delay = (ms = 450) => new Promise((res) => setTimeout(res, ms));
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-// ---------- Seed data ----------
+function inviteCode(prefix: string): string {
+  const block = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `${prefix.slice(0, 4).toUpperCase()}-${block}`;
+}
+
+function daysFromNow(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString();
+}
+
+// ---------- Seed data (only written to storage once) ----------
 
 const SEED_CLASSES: ClassRow[] = [
-  { id: "c1", name: "Algebra II", subject: "Mathematics", teacherName: "Ms. Hana Reyes", grade: "10th Grade", inviteCode: "ALG2-7F3K" },
-  { id: "c2", name: "World History", subject: "History", teacherName: "Mr. Daniel Osei", grade: "10th Grade", inviteCode: "HIST-9P2M" },
-  { id: "c3", name: "Cell Biology", subject: "Science", teacherName: "Dr. Amina Saleh", grade: "10th Grade", inviteCode: "BIO1-4X8Q" },
-  { id: "c4", name: "English Literature", subject: "English", teacherName: "Ms. Clare Whitfield", grade: "10th Grade", inviteCode: "ENGL-2T6R" },
-  { id: "c5", name: "Physics Fundamentals", subject: "Science", teacherName: "Mr. Karim Idris", grade: "11th Grade", inviteCode: "PHYS-5W1N" },
-  { id: "c6", name: "Arabic Language", subject: "Languages", teacherName: "Ms. Lina Haddad", grade: "10th Grade", inviteCode: "ARAB-8J4D" },
-  { id: "c7", name: "Computer Science I", subject: "Technology", teacherName: "Mr. Youssef Tarek", grade: "11th Grade", inviteCode: "COMP-3Z9L" },
-  { id: "c8", name: "Visual Arts", subject: "Arts", teacherName: "Ms. Priya Nair", grade: "10th Grade", inviteCode: "ARTS-6Y5B" },
+  { id: "c1", name: "Algebra II", subject: "Mathematics", teacherName: "Ms. Hana Reyes", teacherId: null, grade: "10th Grade", inviteCode: "ALG2-7F3K" },
+  { id: "c2", name: "World History", subject: "History", teacherName: "Mr. Daniel Osei", teacherId: null, grade: "10th Grade", inviteCode: "HIST-9P2M" },
+  { id: "c3", name: "Cell Biology", subject: "Science", teacherName: "Dr. Amina Saleh", teacherId: null, grade: "10th Grade", inviteCode: "BIO1-4X8Q" },
+  { id: "c4", name: "English Literature", subject: "English", teacherName: "Ms. Clare Whitfield", teacherId: null, grade: "10th Grade", inviteCode: "ENGL-2T6R" },
+  { id: "c5", name: "Physics Fundamentals", subject: "Science", teacherName: "Mr. Karim Idris", teacherId: null, grade: "11th Grade", inviteCode: "PHYS-5W1N" },
+  { id: "c6", name: "Arabic Language", subject: "Languages", teacherName: "Ms. Lina Haddad", teacherId: null, grade: "10th Grade", inviteCode: "ARAB-8J4D" },
+  { id: "c7", name: "Computer Science I", subject: "Technology", teacherName: "Mr. Youssef Tarek", teacherId: null, grade: "11th Grade", inviteCode: "COMP-3Z9L" },
+  { id: "c8", name: "Visual Arts", subject: "Arts", teacherName: "Ms. Priya Nair", teacherId: null, grade: "10th Grade", inviteCode: "ARTS-6Y5B" },
 ];
 
 const SEED_ASSIGNMENTS: Assignment[] = [
@@ -86,13 +102,7 @@ const SEED_ANNOUNCEMENTS: Announcement[] = [
   { id: "n4", classId: "c7", title: "Guest speaker next week", body: "A software engineer from a local startup will join class next Wednesday to talk about real-world coding careers.", postedAt: daysFromNow(-4) },
 ];
 
-function daysFromNow(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + n);
-  return d.toISOString();
-}
-
-// ---------- Internal helpers ----------
+// ---------- Generic JSON store helpers ----------
 
 async function readJSON<T>(key: string, fallback: T): Promise<T> {
   const raw = await AsyncStorage.getItem(key);
@@ -101,6 +111,30 @@ async function readJSON<T>(key: string, fallback: T): Promise<T> {
 
 async function writeJSON<T>(key: string, value: T): Promise<void> {
   await AsyncStorage.setItem(key, JSON.stringify(value));
+}
+
+async function ensureSeeded(): Promise<void> {
+  const seeded = await AsyncStorage.getItem(KEYS.seeded);
+  if (seeded) return;
+  await writeJSON(KEYS.classes, SEED_CLASSES);
+  await writeJSON(KEYS.assignments, SEED_ASSIGNMENTS);
+  await writeJSON(KEYS.announcements, SEED_ANNOUNCEMENTS);
+  await AsyncStorage.setItem(KEYS.seeded, "1");
+}
+
+async function getClassesStore(): Promise<ClassRow[]> {
+  await ensureSeeded();
+  return readJSON<ClassRow[]>(KEYS.classes, []);
+}
+
+async function getAssignmentsStore(): Promise<Assignment[]> {
+  await ensureSeeded();
+  return readJSON<Assignment[]>(KEYS.assignments, []);
+}
+
+async function getAnnouncementsStore(): Promise<Announcement[]> {
+  await ensureSeeded();
+  return readJSON<Announcement[]>(KEYS.announcements, []);
 }
 
 interface StoredUser extends UserProfile {
@@ -158,11 +192,11 @@ export async function getSessionUser(): Promise<UserProfile | null> {
   return profile;
 }
 
-// ---------- Classes / enrollment ----------
+// ---------- Classes / enrollment (student side) ----------
 
 export async function getAllClasses(): Promise<ClassRow[]> {
   await delay();
-  return SEED_CLASSES;
+  return getClassesStore();
 }
 
 export async function getEnrolledClassIds(userId: string): Promise<string[]> {
@@ -172,15 +206,15 @@ export async function getEnrolledClassIds(userId: string): Promise<string[]> {
 
 export async function getClassesForStudent(userId: string): Promise<ClassRow[]> {
   await delay();
-  const enrollments = await readJSON<Record<string, string[]>>(KEYS.enrollments, {});
-  const ids = enrollments[userId] ?? [];
-  return SEED_CLASSES.filter((c) => ids.includes(c.id));
+  const [classes, ids] = await Promise.all([getClassesStore(), getEnrolledClassIds(userId)]);
+  return classes.filter((c) => ids.includes(c.id));
 }
 
 export async function enrollWithInviteCode(userId: string, rawCode: string): Promise<ClassRow> {
   await delay(600);
   const code = rawCode.trim().toUpperCase();
-  const match = SEED_CLASSES.find((c) => c.inviteCode === code);
+  const classes = await getClassesStore();
+  const match = classes.find((c) => c.inviteCode === code);
   if (!match) {
     throw new Error("That invite code doesn't match any class. Double-check it and try again.");
   }
@@ -194,20 +228,136 @@ export async function enrollWithInviteCode(userId: string, rawCode: string): Pro
   return match;
 }
 
-// ---------- Assignments / announcements ----------
+// ---------- Classes (teacher side) ----------
+
+export async function getClassesForTeacher(teacherId: string): Promise<ClassRow[]> {
+  await delay();
+  const classes = await getClassesStore();
+  return classes.filter((c) => c.teacherId === teacherId);
+}
+
+export async function createClass(
+  teacherId: string,
+  teacherName: string,
+  params: { name: string; subject: string; grade: string }
+): Promise<ClassRow> {
+  await delay(600);
+  const classes = await getClassesStore();
+  const newClass: ClassRow = {
+    id: uid(),
+    name: params.name.trim(),
+    subject: params.subject.trim(),
+    grade: params.grade.trim(),
+    teacherName,
+    teacherId,
+    inviteCode: inviteCode(params.name || "CLS"),
+  };
+  classes.push(newClass);
+  await writeJSON(KEYS.classes, classes);
+  return newClass;
+}
+
+export interface RosterEntry {
+  studentId: string;
+  name: string;
+  email: string;
+}
+
+export async function getRosterForClass(classId: string): Promise<RosterEntry[]> {
+  await delay();
+  const [enrollments, users] = await Promise.all([
+    readJSON<Record<string, string[]>>(KEYS.enrollments, {}),
+    readJSON<StoredUser[]>(KEYS.users, []),
+  ]);
+  const studentIds = Object.entries(enrollments)
+    .filter(([, classIds]) => classIds.includes(classId))
+    .map(([studentId]) => studentId);
+  return studentIds
+    .map((id) => users.find((u) => u.id === id))
+    .filter((u): u is StoredUser => !!u)
+    .map((u) => ({ studentId: u.id, name: u.name, email: u.email }));
+}
+
+// ---------- Assignments / announcements (student read side) ----------
 
 export async function getAssignmentsForStudent(userId: string): Promise<(Assignment & { className: string })[]> {
   await delay();
-  const classIds = await getEnrolledClassIds(userId);
-  return SEED_ASSIGNMENTS.filter((a) => classIds.includes(a.classId))
-    .map((a) => ({ ...a, className: SEED_CLASSES.find((c) => c.id === a.classId)?.name ?? "Class" }))
+  const [classes, assignments, classIds] = await Promise.all([
+    getClassesStore(),
+    getAssignmentsStore(),
+    getEnrolledClassIds(userId),
+  ]);
+  return assignments
+    .filter((a) => classIds.includes(a.classId))
+    .map((a) => ({ ...a, className: classes.find((c) => c.id === a.classId)?.name ?? "Class" }))
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 }
 
 export async function getAnnouncementsForStudent(userId: string): Promise<(Announcement & { className: string })[]> {
   await delay();
-  const classIds = await getEnrolledClassIds(userId);
-  return SEED_ANNOUNCEMENTS.filter((a) => classIds.includes(a.classId))
-    .map((a) => ({ ...a, className: SEED_CLASSES.find((c) => c.id === a.classId)?.name ?? "Class" }))
+  const [classes, announcements, classIds] = await Promise.all([
+    getClassesStore(),
+    getAnnouncementsStore(),
+    getEnrolledClassIds(userId),
+  ]);
+  return announcements
+    .filter((a) => classIds.includes(a.classId))
+    .map((a) => ({ ...a, className: classes.find((c) => c.id === a.classId)?.name ?? "Class" }))
     .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+}
+
+// ---------- Assignments / announcements (teacher write side) ----------
+
+export async function getAssignmentsForClass(classId: string): Promise<Assignment[]> {
+  await delay();
+  const assignments = await getAssignmentsStore();
+  return assignments
+    .filter((a) => a.classId === classId)
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+}
+
+export async function getAnnouncementsForClass(classId: string): Promise<Announcement[]> {
+  await delay();
+  const announcements = await getAnnouncementsStore();
+  return announcements
+    .filter((a) => a.classId === classId)
+    .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+}
+
+export async function createAssignment(params: {
+  classId: string;
+  title: string;
+  dueDate: string;
+}): Promise<Assignment> {
+  await delay(500);
+  const assignments = await getAssignmentsStore();
+  const newAssignment: Assignment = {
+    id: uid(),
+    classId: params.classId,
+    title: params.title.trim(),
+    dueDate: params.dueDate,
+    status: "upcoming",
+  };
+  assignments.push(newAssignment);
+  await writeJSON(KEYS.assignments, assignments);
+  return newAssignment;
+}
+
+export async function postAnnouncement(params: {
+  classId: string;
+  title: string;
+  body: string;
+}): Promise<Announcement> {
+  await delay(500);
+  const announcements = await getAnnouncementsStore();
+  const newAnnouncement: Announcement = {
+    id: uid(),
+    classId: params.classId,
+    title: params.title.trim(),
+    body: params.body.trim(),
+    postedAt: new Date().toISOString(),
+  };
+  announcements.push(newAnnouncement);
+  await writeJSON(KEYS.announcements, announcements);
+  return newAnnouncement;
 }
