@@ -59,13 +59,13 @@ interface FieldProps extends TextInputProps {
   label: string;
 }
 
-export function Field({ label, ...rest }: FieldProps) {
+export function Field({ label, style, ...rest }: FieldProps) {
   return (
     <View style={{ marginBottom: spacing.md }}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         placeholderTextColor={colors.textFaint}
-        style={styles.input}
+        style={[styles.input, style]}
         autoCapitalize="none"
         {...rest}
       />

@@ -24,9 +24,11 @@ function initials(name: string) {
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
 
+  const isTeacher = user?.role === "teacher";
+
   const classesQuery = useQuery({
-    queryKey: ["myClasses", user?.id],
-    queryFn: () => db.getClassesForStudent(user!.id),
+    queryKey: isTeacher ? ["teacherClasses", user?.id] : ["myClasses", user?.id],
+    queryFn: () => (isTeacher ? db.getClassesForTeacher(user!.id) : db.getClassesForStudent(user!.id)),
     enabled: !!user,
   });
 
@@ -59,7 +61,7 @@ export default function ProfileScreen() {
             </Card>
 
             <Text style={styles.sectionLabel}>
-              My classes {classesQuery.data ? `(${classesQuery.data.length})` : ""}
+              {isTeacher ? "Classes you teach" : "My classes"} {classesQuery.data ? `(${classesQuery.data.length})` : ""}
             </Text>
 
             {classesQuery.isLoading ? (
@@ -69,9 +71,13 @@ export default function ProfileScreen() {
             ) : !classesQuery.data || classesQuery.data.length === 0 ? (
               <Card style={{ marginBottom: spacing.lg }}>
                 <EmptyState
-                  icon="🎒"
+                  icon={isTeacher ? "🏫" : "🎒"}
                   title="No classes yet"
-                  subtitle="Use an invite code from the Join tab to enroll in your first class."
+                  subtitle={
+                    isTeacher
+                      ? "Create a class from the Classes tab to get started."
+                      : "Use an invite code from the Join tab to enroll in your first class."
+                  }
                 />
               </Card>
             ) : (
@@ -85,7 +91,11 @@ export default function ProfileScreen() {
                         <Text style={styles.classMeta}>
                           {c.subject} · {c.grade}
                         </Text>
-                        <Text style={styles.teacherName}>{c.teacherName}</Text>
+                        {isTeacher ? (
+                          <Text style={styles.teacherName}>Code: {c.inviteCode}</Text>
+                        ) : (
+                          <Text style={styles.teacherName}>{c.teacherName}</Text>
+                        )}
                       </View>
                     </View>
                   </Card>
