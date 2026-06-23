@@ -5,6 +5,7 @@ import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import AuthScreen from "../screens/AuthScreen";
 import MainTabs from "./MainTabs";
+import TeacherTabs from "./TeacherTabs";
 import { colors } from "../theme/colors";
 
 const navTheme = {
@@ -32,7 +33,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer theme={navTheme}>
-      {user ? <MainTabs /> : <AuthScreen />}
+      {!user ? <AuthScreen /> : user.role === "teacher" ? <TeacherTabs /> : <MainTabs />}
     </NavigationContainer>
   );
 }
